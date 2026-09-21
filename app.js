@@ -2,15 +2,34 @@ const STORAGE_KEY='mes-depenses-pwa-v1';
 const DEFAULT_CATEGORIES=['Restaurant','Courses','Transport','Logement','Loisirs','Shopping','Santé','Autre'];
 const CATEGORY_ICONS={Restaurant:'utensils',Courses:'shopping-cart',Transport:'car',Logement:'house',Loisirs:'party-popper',Shopping:'shopping-bag','Santé':'heart-pulse',Autre:'circle-ellipsis'};
 const CURRENCIES=['EUR','MAD','USD','GBP','CHF','CAD'];
+const MAD_RATE=0.091427;
+const DATA_VERSION=4;
 const iconUrl=name=>`https://api.iconify.design/lucide/${CATEGORY_ICONS[name]||'tag'}.svg`;
 const fmt=(n,c)=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:c||'EUR',maximumFractionDigits:2}).format(Number(n||0));
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
 const today=()=>new Date().toISOString().slice(0,10);
 let state=load();let tab='home';let deferredPrompt=null;
 
-function defaultState(){const gid=uid();return{activeGroupId:gid,groups:[{id:gid,name:'Mon groupe',currency:'EUR',participants:[{id:uid(),name:'Moi'}],expenses:[],withdrawals:[]}]};}
-function load(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||defaultState()}catch{return defaultState()}}
-function ensureGroupData(g){if(!g.categories)g.categories=DEFAULT_CATEGORIES.map(name=>({id:uid(),name,icon:iconUrl(name)}));if(!g.lastRates)g.lastRates={EUR:1};if(!g.expenses)g.expenses=[];if(!g.withdrawals)g.withdrawals=[];return g}
+function defaultState(){const gid=uid();return{dataVersion:DATA_VERSION,activeGroupId:gid,groups:[{id:gid,name:'Mon groupe',currency:'EUR',participants:[{id:uid(),name:'Moi'}],expenses:[],withdrawals:[]}]};}
+function migrateToV4(s){
+ if(!s||!Array.isArray(s.groups))return defaultState();
+ if(Number(s.dataVersion||0)>=DATA_VERSION)return s;
+ s.groups.forEach(g=>{
+  if(!g.lastRates)g.lastRates={EUR:1};g.lastRates.MAD=MAD_RATE;
+  (g.withdrawals||[]).forEach(w=>{w.currency='MAD';w.rate=MAD_RATE;w.amountEur=Number(w.amount||0)*MAD_RATE});
+  (g.expenses||[]).forEach(e=>{
+   const oldRate=Number(e.rate||1)||1;
+   let nativeSplits={};
+   if(e.splits&&Object.keys(e.splits).length)nativeSplits={...e.splits};
+   else if(e.splitsEur&&Object.keys(e.splitsEur).length)Object.entries(e.splitsEur).forEach(([pid,v])=>nativeSplits[pid]=Number(v||0)/oldRate);
+   e.currency='MAD';e.rate=MAD_RATE;e.amountEur=Number(e.amount||0)*MAD_RATE;e.splits=nativeSplits;delete e.splitsEur;
+  });
+ });
+ s.dataVersion=DATA_VERSION;
+ return s;
+}
+function load(){try{const migrated=migrateToV4(JSON.parse(localStorage.getItem(STORAGE_KEY))||defaultState());localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated}catch{const fresh=defaultState();localStorage.setItem(STORAGE_KEY,JSON.stringify(fresh));return fresh}}
+function ensureGroupData(g){if(!g.categories)g.categories=DEFAULT_CATEGORIES.map(name=>({id:uid(),name,icon:iconUrl(name)}));if(!g.lastRates)g.lastRates={EUR:1};g.lastRates.MAD=g.lastRates.MAD||MAD_RATE;if(!g.expenses)g.expenses=[];if(!g.withdrawals)g.withdrawals=[];return g}
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));render()}
 function group(){return ensureGroupData(state.groups.find(g=>g.id===state.activeGroupId)||state.groups[0])}
 function categories(){return group().categories}
@@ -24,13 +43,14 @@ function withdrawalAmountEur(w){return Number(w.amountEur??(Number(w.amount||0)*
 function cashSpentNative(w,excludeExpenseId=''){return group().expenses.filter(e=>e.withdrawalId===w.id&&e.id!==excludeExpenseId).reduce((a,e)=>a+Number(e.amount||0),0)}
 function cashRemainingNative(w,excludeExpenseId=''){return Math.max(0,Number(w.amount||0)-cashSpentNative(w,excludeExpenseId))}
 function totalCashRemainingEur(){return group().withdrawals.reduce((a,w)=>a+cashRemainingNative(w)*withdrawalRate(w),0)}
-function balances(){const g=group(),b={};g.participants.forEach(p=>b[p.id]=0);g.expenses.forEach(e=>{if(b[e.payerId]!==undefined)b[e.payerId]+=eurAmount(e);Object.entries(e.splitsEur||e.splits||{}).forEach(([pid,v])=>{if(b[pid]!==undefined)b[pid]-=Number(v)});});return b}
+function expenseSplitsNative(e){if(e.splits&&Object.keys(e.splits).length)return e.splits;if(e.splitsEur&&Object.keys(e.splitsEur).length){const r=Number(e.rate||1)||1;const out={};Object.entries(e.splitsEur).forEach(([pid,v])=>out[pid]=Number(v||0)/r);return out}return {}}
+function balances(){const g=group(),b={};g.participants.forEach(p=>b[p.id]=0);g.expenses.forEach(e=>{const rate=Number(e.rate||1);if(b[e.payerId]!==undefined)b[e.payerId]+=eurAmount(e);Object.entries(expenseSplitsNative(e)).forEach(([pid,v])=>{if(b[pid]!==undefined)b[pid]-=Number(v)*rate});});return b}
 function debts(){const b=balances(),cred=Object.entries(b).filter(([,v])=>v>.005).map(([id,v])=>({id,v})),deb=Object.entries(b).filter(([,v])=>v<-.005).map(([id,v])=>({id,v:-v}));const out=[];let i=0,j=0;while(i<deb.length&&j<cred.length){const x=Math.min(deb[i].v,cred[j].v);out.push({from:deb[i].id,to:cred[j].id,amount:x});deb[i].v-=x;cred[j].v-=x;if(deb[i].v<.005)i++;if(cred[j].v<.005)j++;}return out}
 function totalExpenses(){return group().expenses.reduce((a,e)=>a+eurAmount(e),0)}
 function render(){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.getElementById('app').innerHTML=({home:homeView,expenses:expensesView,cash:cashView,balances:balancesView,settings:settingsView}[tab])();bindDynamic()}
 
 function homeView(){const g=group();return`<section class="card hero"><div class="muted small">${esc(g.name)}</div><h2 style="margin:4px 0 14px">${fmt(totalExpenses(),'EUR')}</h2><div class="grid"><div><div class="muted small">Dépenses</div><strong>${g.expenses.length}</strong></div><div><div class="muted small">Cash disponible</div><strong>${fmt(totalCashRemainingEur(),'EUR')}</strong></div></div></section><div class="btnrow"><button class="primary" data-action="expense">+ Dépense</button><button class="secondary" data-action="withdrawal">+ Retrait espèces</button></div><section class="card" style="margin-top:14px"><h3>Dernières opérations</h3>${g.expenses.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6).map(expRow).join('')||'<div class="empty">Aucune dépense</div>'}</section>`}
-function expRow(e){const c=categoryObj(e.category);return`<div class="row"><div><img src="${esc(c.icon)}" alt="" style="width:22px;height:22px;vertical-align:middle;margin-right:6px">${e.photo?`<img class="photo" src="${e.photo}" style="width:46px;height:46px;float:left;margin-right:10px">`:''}<strong>${esc(e.title)}</strong><div class="small muted">${esc(e.category)} · ${esc(participantName(e.payerId))}${e.withdrawalId?' · Espèces':''}</div></div><div class="amount">${fmt(eurAmount(e),'EUR')}${(e.currency||'EUR')!=='EUR'?`<div class="small muted">${fmt(e.amount,e.currency)} · taux ${Number(e.rate||1).toFixed(4)}</div>`:''}</div></div>`}
+function expRow(e){const c=categoryObj(e.category);return`<div class="row"><div><img src="${esc(c.icon)}" alt="" style="width:22px;height:22px;vertical-align:middle;margin-right:6px">${e.photo?`<img class="photo" src="${e.photo}" style="width:46px;height:46px;float:left;margin-right:10px">`:''}<strong>${esc(e.title)}</strong><div class="small muted">${esc(e.category)} · ${esc(participantName(e.payerId))}${e.withdrawalId?' · Espèces':''}</div></div><div class="amount">${fmt(eurAmount(e),'EUR')}${(e.currency||'EUR')!=='EUR'?`<div class="small muted">${fmt(e.amount,e.currency)} · taux ${Number(e.rate||1).toFixed(6)}</div>`:''}</div></div>`}
 function expensesView(){const es=group().expenses.slice().sort((a,b)=>b.date.localeCompare(a.date));return`<div class="btnrow"><button class="primary" data-action="expense">+ Ajouter</button></div><section class="card"><h3>Toutes les dépenses</h3>${es.map(e=>`${expRow(e)}<div class="btnrow" style="justify-content:flex-end"><button class="secondary small" data-edit-exp="${e.id}">Modifier</button><button class="danger small" data-delete-exp="${e.id}">Supprimer</button></div>`).join('')||'<div class="empty">Aucune dépense enregistrée</div>'}</section>`}
 function cashView(){const ws=group().withdrawals.slice().sort((a,b)=>b.date.localeCompare(a.date));return`<div class="btnrow"><button class="primary" data-action="withdrawal">+ Nouveau retrait</button></div>${ws.map(w=>{const cur=withdrawalCurrency(w),spent=cashSpentNative(w),rem=cashRemainingNative(w),pct=Math.min(100,spent/Number(w.amount||0)*100||0),count=group().expenses.filter(e=>e.withdrawalId===w.id).length;return`<section class="card" data-open-withdrawal="${w.id}" style="cursor:pointer"><div class="row"><div><strong>${esc(w.title||'Retrait espèces')}</strong><div class="small muted">${w.date} · ${esc(participantName(w.ownerId))} · ${count} dépense${count>1?'s':''}</div></div><div class="amount">${fmt(w.amount,cur)}${cur!=='EUR'?`<div class="small muted">≈ ${fmt(withdrawalAmountEur(w),'EUR')}</div>`:''}</div></div><div class="grid"><div class="stat"><span class="small muted">Dépensé</span><strong>${fmt(spent,cur)}</strong></div><div class="stat"><span class="small muted">Restant</span><strong>${fmt(rem,cur)}</strong></div></div><div class="cash-progress" style="margin:12px 0"><span style="width:${pct}%"></span></div><div class="btnrow"><button class="secondary" data-cash-expense="${w.id}">+ Dépense</button><button class="secondary" data-edit-withdrawal="${w.id}">Modifier</button><button class="danger" data-delete-w="${w.id}">Supprimer</button></div></section>`}).join('')||'<section class="card empty">Aucun retrait espèces</section>'}`}
 function balancesView(){const b=balances(),ds=debts();return`<section class="card"><h3>Solde par participant</h3>${group().participants.map(p=>`<div class="row"><span>${esc(p.name)}</span><span class="amount">${fmt(b[p.id],'EUR')}</span></div>`).join('')}</section><section class="card"><h3>Remboursements suggérés</h3>${ds.map(d=>`<div class="row"><span><strong>${esc(participantName(d.from))}</strong> rembourse <strong>${esc(participantName(d.to))}</strong></span><span class="amount">${fmt(d.amount,'EUR')}</span></div>`).join('')||'<div class="empty">Tout est équilibré</div>'}</section>`}
@@ -70,7 +90,7 @@ function openExpense(withdrawalId='',expenseId=''){
  const defaultRate=Number(existing?.rate??g.lastRates[selectedCurrency]??(w?withdrawalRate(w):1));
  const existingAmount=Number(existing?.amount||0);
  const max=w?cashRemainingNative(w,existing?.id||'')+existingAmount:null;
- const existingSplits=existing?.splitsEur||existing?.splits||{};
+ const existingSplits=existing?expenseSplitsNative(existing):{};
  const hasCustom=existing&&Object.values(existingSplits).length>0;
  modal(`<h2>${existing?'Modifier la dépense':w?'Dépense du retrait':'Nouvelle dépense'}</h2>
  <div class="field"><label>Libellé</label><input name="title" required value="${esc(existing?.title||'')}" placeholder="Ex. Restaurant"></div>
@@ -80,18 +100,18 @@ function openExpense(withdrawalId='',expenseId=''){
  <div class="field"><label>Date</label><input name="date" type="date" value="${existing?.date||today()}" required></div>
  <div class="field"><label>Catégorie</label><select name="category">${categories().map(c=>`<option ${c.name===existing?.category?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Payé par</label><select name="payerId">${participantOptions(defaultPayer)}</select>${w?`<div class="small muted">Par défaut : ${esc(participantName(w.ownerId))}, mais vous pouvez le changer.</div>`:''}</div>
- <div class="field"><label>Répartition</label><select name="mode" id="splitMode"><option value="equal" ${!hasCustom?'selected':''}>À parts égales</option><option value="custom" ${hasCustom?'selected':''}>Montants personnalisés (EUR)</option></select></div>
+ <div class="field"><label>Répartition (${selectedCurrency})</label><select name="mode" id="splitMode"><option value="equal" ${!hasCustom?'selected':''}>À parts égales</option><option value="custom" ${hasCustom?'selected':''}>Montants personnalisés (${selectedCurrency})</option></select></div>
  <div id="customSplit" class="${hasCustom?'':'hidden'}">${splitFields(existingSplits)}</div>
  <div class="field"><label>Photo du ticket</label><input name="photo" type="file" accept="image/*" capture="environment">${existing?.photo?'<div class="small muted">Laissez vide pour conserver la photo actuelle.</div>':''}</div>
  <div class="modal-actions"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="submit">${existing?'Enregistrer les modifications':'Enregistrer'}</button></div>`,async(fd,d)=>{
    const amount=Number(fd.get('amount')),currency=String(fd.get('currency')||selectedCurrency),rate=Number(fd.get('rate')),amountEur=amount*rate;
    if(max!==null&&amount>max+.001)return alert('Cette dépense dépasse le cash restant du retrait.');
-   let splitsEur={};
-   if(fd.get('mode')==='equal'){const each=amountEur/g.participants.length;g.participants.forEach((p,i)=>splitsEur[p.id]=i===g.participants.length-1?amountEur-each*(g.participants.length-1):each)}
-   else{let total=0;g.participants.forEach(p=>{const v=Number(fd.get('split_'+p.id)||0);splitsEur[p.id]=v;total+=v});if(Math.abs(total-amountEur)>.01)return alert('La somme des répartitions doit être égale au montant converti en euros.')}
+   let splits={};
+   if(fd.get('mode')==='equal'){const each=amount/g.participants.length;g.participants.forEach((p,i)=>splits[p.id]=i===g.participants.length-1?amount-each*(g.participants.length-1):each)}
+   else{let total=0;g.participants.forEach(p=>{const v=Number(fd.get('split_'+p.id)||0);splits[p.id]=v;total+=v});if(Math.abs(total-amount)>.01)return alert(`La somme des répartitions doit être égale au montant de la dépense (${fmt(amount,currency)}).`)}
    let photo=existing?.photo||'';const file=fd.get('photo');if(file&&file.size)photo=await compressImage(file);
    g.lastRates[currency]=rate;
-   const data={id:existing?.id||uid(),title:fd.get('title'),amount,currency,rate,amountEur,date:fd.get('date'),category:fd.get('category'),payerId:fd.get('payerId'),splitsEur,withdrawalId:linkedWithdrawalId||null,photo};
+   const data={id:existing?.id||uid(),title:fd.get('title'),amount,currency,rate,amountEur,date:fd.get('date'),category:fd.get('category'),payerId:fd.get('payerId'),splits,withdrawalId:linkedWithdrawalId||null,photo};
    if(existing)Object.assign(existing,data);else g.expenses.push(data);
    d.close();save();
  });
@@ -131,7 +151,7 @@ function openParticipant(){modal(`<h2>Ajouter un participant</h2><div class="fie
 function openCategory(){modal(`<h2>Ajouter une catégorie</h2><div class="field"><label>Nom</label><input name="name" required placeholder="Ex. Café"></div><div class="field"><label>Icône Iconify (optionnel)</label><input name="icon" placeholder="Ex. coffee"><div class="small muted">Laissez vide pour une icône automatique.</div></div><div class="modal-actions"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary">Ajouter</button></div>`,(fd,d)=>{const name=String(fd.get('name')).trim(),slug=String(fd.get('icon')).trim().toLowerCase().replace(/[^a-z0-9-]/g,'-')||'tag';group().categories.push({id:uid(),name,icon:`https://api.iconify.design/lucide/${slug}.svg`});d.close();save()});setTimeout(()=>document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close(),0)}
 async function compressImage(file){return new Promise((resolve,reject)=>{const img=new Image(),r=new FileReader();r.onload=()=>img.src=r.result;r.onerror=reject;img.onload=()=>{const max=1200,scale=Math.min(1,max/img.width,max/img.height),c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);c.getContext('2d').drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.7))};r.readAsDataURL(file)})}
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mes-depenses-sauvegarde.json';a.click();URL.revokeObjectURL(a.href)}
-function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.groups)throw 0;if(confirm('Remplacer les données actuelles par cette sauvegarde ?')){state=x;save()}}catch{alert('Fichier de sauvegarde invalide.')}};r.readAsText(f)}
+function importData(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.groups)throw 0;if(confirm('Remplacer les données actuelles par cette sauvegarde ?')){state=migrateToV4(x);save()}}catch{alert('Fichier de sauvegarde invalide.')}};r.readAsText(f)}
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').classList.remove('hidden')});
 document.getElementById('installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();deferredPrompt=null}else alert('Sur iPhone : Safari > Partager > Sur l’écran d’accueil')};
