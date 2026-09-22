@@ -29,7 +29,7 @@ function migrateToV5(s){
  s.dataVersion=DATA_VERSION;return s;
 }
 function load(){try{const migrated=migrateToV5(JSON.parse(localStorage.getItem(STORAGE_KEY))||defaultState());localStorage.setItem(STORAGE_KEY,JSON.stringify(migrated));return migrated}catch{const fresh=defaultState();localStorage.setItem(STORAGE_KEY,JSON.stringify(fresh));return fresh}}
-function ensureGroupData(g){if(!g.categories)g.categories=DEFAULT_CATEGORIES.map(name=>({id:uid(),name,iconName:CATEGORY_ICONS[name]||'tag',color:CATEGORY_COLORS[name]||'#0b6b5b'}));g.categories.forEach((c,i)=>{if(!c.iconName)c.iconName=CATEGORY_ICONS[c.name]||'tag';if(!c.color)c.color=CATEGORY_COLORS[c.name]||['#e11d48','#16a34a','#2563eb','#9333ea','#f59e0b','#db2777','#dc2626','#64748b'][i%8];c.icon=categoryIconUrl(c)});if(!g.lastRates)g.lastRates={EUR:1};g.lastRates.MAD=MAD_RATE;if(!g.expenses)g.expenses=[];g.expenses.forEach(e=>{if(!e.paymentMethod)e.paymentMethod=e.withdrawalId?'Espèces':'CB'});if(!g.withdrawals)g.withdrawals=[];return g}
+function ensureGroupData(g){if(!g.categories)g.categories=DEFAULT_CATEGORIES.map(name=>({id:uid(),name,iconName:CATEGORY_ICONS[name]||'tag',color:CATEGORY_COLORS[name]||'#0b6b5b'}));g.categories.forEach((c,i)=>{if(!c.iconName)c.iconName=CATEGORY_ICONS[c.name]||'tag';if(!c.color)c.color=CATEGORY_COLORS[c.name]||['#e11d48','#16a34a','#2563eb','#9333ea','#f59e0b','#db2777','#dc2626','#64748b'][i%8];c.icon=categoryIconUrl(c)});if(!g.lastRates)g.lastRates={EUR:1};g.lastRates.MAD=MAD_RATE;if(!g.expenses)g.expenses=[];g.expenses.forEach(e=>{if(!e.paymentMethod)e.paymentMethod=e.withdrawalId?'Espèces':'CB'});if(!g.withdrawals)g.withdrawals=[];if(!g.settlements)g.settlements=[];return g}
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));render()}
 function group(){return ensureGroupData(state.groups.find(g=>g.id===state.activeGroupId)||state.groups[0])}
 function categories(){return group().categories}
@@ -44,12 +44,12 @@ function cashSpentNative(w,excludeExpenseId=''){return group().expenses.filter(e
 function cashRemainingNative(w,excludeExpenseId=''){return Math.max(0,Number(w.amount||0)-cashSpentNative(w,excludeExpenseId))}
 function totalCashRemainingEur(){return group().withdrawals.reduce((a,w)=>a+cashRemainingNative(w)*withdrawalRate(w),0)}
 function expenseSplitsNative(e){if(e.splits&&Object.keys(e.splits).length)return e.splits;if(e.splitsEur&&Object.keys(e.splitsEur).length){const r=Number(e.rate||1)||1;const out={};Object.entries(e.splitsEur).forEach(([pid,v])=>out[pid]=Number(v||0)/r);return out}return {}}
-function balances(){const g=group(),b={};g.participants.forEach(p=>b[p.id]=0);g.expenses.forEach(e=>{const rate=Number(e.rate||1);if(b[e.payerId]!==undefined)b[e.payerId]+=eurAmount(e);Object.entries(expenseSplitsNative(e)).forEach(([pid,v])=>{if(b[pid]!==undefined)b[pid]-=Number(v)*rate});});return b}
+function balances(){const g=group(),b={};g.participants.forEach(p=>b[p.id]=0);g.expenses.forEach(e=>{const rate=Number(e.rate||1);if(b[e.payerId]!==undefined)b[e.payerId]+=eurAmount(e);Object.entries(expenseSplitsNative(e)).forEach(([pid,v])=>{if(b[pid]!==undefined)b[pid]-=Number(v)*rate});});(g.settlements||[]).forEach(r=>{const v=Number(r.amountEur||0);if(b[r.fromId]!==undefined)b[r.fromId]+=v;if(b[r.toId]!==undefined)b[r.toId]-=v;});return b}
 function debts(){const b=balances(),cred=Object.entries(b).filter(([,v])=>v>.005).map(([id,v])=>({id,v})),deb=Object.entries(b).filter(([,v])=>v<-.005).map(([id,v])=>({id,v:-v}));const out=[];let i=0,j=0;while(i<deb.length&&j<cred.length){const x=Math.min(deb[i].v,cred[j].v);out.push({from:deb[i].id,to:cred[j].id,amount:x});deb[i].v-=x;cred[j].v-=x;if(deb[i].v<.005)i++;if(cred[j].v<.005)j++;}return out}
 function totalExpenses(){return group().expenses.reduce((a,e)=>a+eurAmount(e),0)}
 function render(){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.getElementById('app').innerHTML=({home:homeView,expenses:expensesView,cash:cashView,balances:balancesView,settings:settingsView}[tab])();bindDynamic()}
 
-function homeView(){const g=group();return`<section class="card hero"><div class="muted small">${esc(g.name)}</div><h2 style="margin:4px 0 14px">${fmt(totalExpenses(),'EUR')}</h2><div class="grid"><div><div class="muted small">Dépenses</div><strong>${g.expenses.length}</strong></div><div><div class="muted small">Cash disponible</div><strong>${fmt(totalCashRemainingEur(),'EUR')}</strong></div></div></section><div class="btnrow"><button class="primary" data-action="expense">+ Dépense</button><button class="secondary" data-action="withdrawal">+ Retrait espèces</button></div><section class="card" style="margin-top:14px"><h3>Dernières opérations</h3>${g.expenses.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6).map(expRow).join('')||'<div class="empty">Aucune dépense</div>'}</section>`}
+function homeView(){const g=group();return`<section class="card hero"><div class="muted small">${esc(g.name)}</div><h2 style="margin:4px 0 14px">${fmt(totalExpenses(),'EUR')}</h2><div class="grid"><div><div class="muted small">Dépenses</div><strong>${g.expenses.length}</strong></div><div><div class="muted small">Cash disponible</div><strong>${fmt(totalCashRemainingEur(),'EUR')}</strong></div></div></section><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"><button class="primary" data-action="expense" style="padding-left:8px;padding-right:8px">+ Dépense</button><button class="secondary" data-action="withdrawal" style="padding-left:8px;padding-right:8px">+ Retrait espèces</button><button class="secondary" data-action="income" style="padding-left:8px;padding-right:8px">+ Revenu</button></div><section class="card" style="margin-top:14px"><h3>Dernières opérations</h3>${g.expenses.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6).map(expRow).join('')||'<div class="empty">Aucune dépense</div>'}</section>`}
 function expRow(e){const c=categoryObj(e.category);return`<div class="row"><div><img src="${esc(c.icon)}" alt="" style="width:22px;height:22px;vertical-align:middle;margin-right:6px">${e.photo?`<img class="photo" src="${e.photo}" style="width:46px;height:46px;float:left;margin-right:10px">`:''}<strong>${esc(e.title)}</strong><div class="small muted">${esc(e.category)} · ${esc(participantName(e.payerId))}${e.withdrawalId?' · Espèces':''}</div></div><div class="amount">${fmt(eurAmount(e),'EUR')}${(e.currency||'EUR')!=='EUR'?`<div class="small muted">${fmt(e.amount,e.currency)} · taux ${Number(e.rate||1).toFixed(6)}</div>`:''}</div></div>`}
 function expenseDisplayRow(e,{showPayment=false}={}){
  const c=categoryObj(e.category),cur=e.currency||'EUR',splits=expenseSplitsNative(e);
@@ -84,6 +84,7 @@ function settingsView(){const g=group();return`<section class="card"><h3>Groupe 
 function bindDynamic(){
  document.querySelectorAll('[data-action="expense"]').forEach(x=>x.onclick=()=>openExpense());
  document.querySelectorAll('[data-action="withdrawal"]').forEach(x=>x.onclick=()=>openWithdrawal());
+ document.querySelectorAll('[data-action="income"]').forEach(x=>x.onclick=()=>openIncome());
  document.querySelectorAll('[data-action="group"]').forEach(x=>x.onclick=openGroup);
  document.querySelectorAll('[data-action="category"]').forEach(x=>x.onclick=openCategory);
  document.querySelectorAll('[data-edit-cat]').forEach(x=>x.onclick=()=>openCategory(x.dataset.editCat));
@@ -95,7 +96,7 @@ function bindDynamic(){
  document.querySelectorAll('[data-delete-exp]').forEach(x=>x.onclick=e=>{e.stopPropagation();if(confirm('Supprimer cette dépense ?')){group().expenses=group().expenses.filter(y=>y.id!==x.dataset.deleteExp);save()}});
  document.querySelectorAll('[data-delete-w]').forEach(x=>x.onclick=e=>{e.stopPropagation();if(group().expenses.some(y=>y.withdrawalId===x.dataset.deleteW))return alert('Ce retrait contient des dépenses. Supprimez ou détachez-les d’abord.');if(confirm('Supprimer ce retrait ?')){group().withdrawals=group().withdrawals.filter(w=>w.id!==x.dataset.deleteW);save()}});
  document.querySelectorAll('[data-delete-cat]').forEach(x=>x.onclick=()=>{const id=x.dataset.deleteCat,c=categories().find(y=>y.id===id);if(c&&group().expenses.some(e=>e.category===c.name))return alert('Cette catégorie est utilisée dans des dépenses.');group().categories=categories().filter(y=>y.id!==id);save()});
- document.querySelectorAll('[data-delete-p]').forEach(x=>x.onclick=()=>{const id=x.dataset.deleteP;if(group().expenses.some(e=>e.payerId===id||e.splitsEur?.[id]||e.splits?.[id])||group().withdrawals.some(w=>w.ownerId===id))return alert('Ce participant est utilisé dans des opérations.');group().participants=group().participants.filter(p=>p.id!==id);save()});
+ document.querySelectorAll('[data-delete-p]').forEach(x=>x.onclick=()=>{const id=x.dataset.deleteP;if(group().expenses.some(e=>e.payerId===id||e.splitsEur?.[id]||e.splits?.[id])||group().withdrawals.some(w=>w.ownerId===id)||(group().settlements||[]).some(r=>r.fromId===id||r.toId===id))return alert('Ce participant est utilisé dans des opérations.');group().participants=group().participants.filter(p=>p.id!==id);save()});
  const gs=document.getElementById('groupSelect');if(gs)gs.onchange=e=>{state.activeGroupId=e.target.value;save()};
  const ex=document.getElementById('exportBtn');if(ex)ex.onclick=exportData;
  const im=document.getElementById('importFile');if(im)im.onchange=importData;
@@ -146,6 +147,31 @@ function openExpense(withdrawalId='',expenseId=''){
    d.close();save();
  });
  setTimeout(()=>{const c=document.getElementById('expenseCurrency'),r=document.getElementById('expenseRate');if(c)c.onchange=()=>r.value=g.lastRates[c.value]||1;document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();document.getElementById('splitMode').onchange=e=>document.getElementById('customSplit').classList.toggle('hidden',e.target.value!=='custom')},0)
+}
+
+
+function openIncome(){
+ const g=group(),ds=debts();
+ if(!ds.length)return alert('Il n’y a actuellement aucune dette à rembourser.');
+ const first=ds[0];
+ modal(`<h2>+ Revenu</h2><p class="small muted">Enregistrez le remboursement d’une dette entre deux participants. Le montant est saisi en euros et vient diminuer la dette restante.</p>
+ <div class="field"><label>Participant qui rembourse</label><select name="fromId">${participantOptions(first.from)}</select></div>
+ <div class="field"><label>Participant remboursé</label><select name="toId">${participantOptions(first.to)}</select></div>
+ <div class="field"><label>Montant remboursé (EUR)</label><input name="amountEur" type="number" step="0.01" min="0.01" max="${first.amount.toFixed(2)}" value="${first.amount.toFixed(2)}" required></div>
+ <div class="field"><label>Date</label><input name="date" type="date" value="${today()}" required></div>
+ <div class="small muted">Dette suggérée actuellement : ${esc(participantName(first.from))} → ${esc(participantName(first.to))} : ${fmt(first.amount,'EUR')}</div>
+ <div class="modal-actions"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary">Enregistrer</button></div>`,(fd,d)=>{
+   const fromId=String(fd.get('fromId')),toId=String(fd.get('toId')),amountEur=Number(fd.get('amountEur'));
+   if(fromId===toId)return alert('Choisissez deux participants différents.');
+   const debt=debts().find(x=>x.from===fromId&&x.to===toId);
+   if(!debt)return alert('Aucune dette n’est actuellement due entre ces deux participants dans ce sens.');
+   if(!amountEur||amountEur<=0)return alert('Saisissez un montant supérieur à 0.');
+   if(amountEur>debt.amount+0.005)return alert(`Le remboursement dépasse la dette restante (${fmt(debt.amount,'EUR')}).`);
+   if(!g.settlements)g.settlements=[];
+   g.settlements.push({id:uid(),fromId,toId,amountEur,date:fd.get('date'),type:'repayment'});
+   d.close();save();
+ });
+ setTimeout(()=>document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close(),0)
 }
 
 function openWithdrawal(withdrawalId=''){
