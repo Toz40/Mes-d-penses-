@@ -12,6 +12,7 @@ const categoryIconUrl=c=>iconUrl(c.iconName||CATEGORY_ICONS[c.name]||'tag',c.col
 const fmt=(n,c)=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:c||'EUR',maximumFractionDigits:2}).format(Number(n||0));
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
 const today=()=>new Date().toISOString().slice(0,10);
+const fmtDate=(value)=>{if(!value)return '';const m=String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}-${m[2]}-${m[1]}`:String(value)};
 let state=load();let tab='home';let deferredPrompt=null;
 
 function defaultState(){const gid=uid();return{dataVersion:DATA_VERSION,activeGroupId:gid,groups:[{id:gid,name:'Mon groupe',currency:'EUR',participants:[{id:uid(),name:'Moi'}],expenses:[],withdrawals:[]}]};}
