@@ -81,12 +81,29 @@ function expenseSplitsNative(e){if(e.splits&&Object.keys(e.splits).length)return
 function balances(){const g=group(),b={};g.participants.forEach(p=>b[p.id]=0);g.expenses.forEach(e=>{const rate=Number(e.rate||1);if(b[e.payerId]!==undefined)b[e.payerId]+=eurAmount(e);Object.entries(expenseSplitsNative(e)).forEach(([pid,v])=>{if(b[pid]!==undefined)b[pid]-=Number(v)*rate});});(g.settlements||[]).forEach(r=>{const v=Number(r.amountEur||0);if(b[r.fromId]!==undefined)b[r.fromId]+=v;if(b[r.toId]!==undefined)b[r.toId]-=v;});return b}
 function debts(){const b=balances(),cred=Object.entries(b).filter(([,v])=>v>.005).map(([id,v])=>({id,v})),deb=Object.entries(b).filter(([,v])=>v<-.005).map(([id,v])=>({id,v:-v}));const out=[];let i=0,j=0;while(i<deb.length&&j<cred.length){const x=Math.min(deb[i].v,cred[j].v);out.push({from:deb[i].id,to:cred[j].id,amount:x});deb[i].v-=x;cred[j].v-=x;if(deb[i].v<.005)i++;if(cred[j].v<.005)j++;}return out}
 function totalExpenses(){return group().expenses.reduce((a,e)=>a+eurAmount(e),0)}
+function ensureRuntimeStyles(){
+ if(document.getElementById('runtimeStyles'))return;
+ const st=document.createElement('style');st.id='runtimeStyles';st.textContent=`
+ html,body{max-width:100%;overflow-x:hidden}
+ #app.container{width:100%;max-width:760px;margin:0 auto;overflow-x:hidden}
+ #modal{width:calc(100vw - 12px)!important;max-width:760px!important;margin:auto!important}
+ #modalForm{width:100%;max-width:100%;overflow-x:hidden}
+ #modalForm input,#modalForm select,#modalForm textarea{font-size:16px!important;max-width:100%;min-width:0}
+ #modalForm .split-grid input{font-size:16px!important;width:100%;min-width:0}
+ .filter-picker-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border:1px solid #dde5e2;border-radius:12px;background:#fff;font-size:16px;text-align:left}
+ .filter-options-panel{margin-top:8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:220px;overflow:auto}
+ @media(max-width:430px){.filter-options-panel{grid-template-columns:1fr}}
+ `;document.head.appendChild(st)
+}
+function centerApp(){const a=document.getElementById('app');if(a){a.style.width='100%';a.style.maxWidth='760px';a.style.margin='0 auto';a.style.overflowX='hidden'}}
 function render(){
+ ensureRuntimeStyles();
  if(tab==='balances')tab='home';
  const balanceTab=document.querySelector('.tab[data-tab="balances"]');if(balanceTab)balanceTab.style.display='none';
  const nav=document.querySelector('.tabbar');if(nav)nav.style.gridTemplateColumns='repeat(4,1fr)';
  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
  document.getElementById('app').innerHTML=({home:homeView,expenses:expensesView,cash:cashView,settings:settingsView}[tab]||homeView)();
+ centerApp();
  bindDynamic();
 }
 
@@ -129,10 +146,14 @@ function filteredExpenses(){
 function activeExpenseFilterCount(){return ['dates','categories','payerIds','paymentMethods'].reduce((n,k)=>n+((expenseFilters[k]||[]).length?1:0),0)+(expenseFilters.search?1:0)}
 function expenseToolbar(){const n=activeExpenseFilterCount();return`<div style="position:sticky;top:calc(72px + env(safe-area-inset-top));z-index:7;margin:-4px -4px 12px;padding:8px 4px 10px;background:rgba(245,247,246,.97);backdrop-filter:blur(12px);border-bottom:1px solid #dde5e2">
  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px"><button class="primary" data-action="expense" style="padding:10px 5px;font-size:13px">+ Dépense</button><button class="secondary" data-action="withdrawal" style="padding:10px 5px;font-size:13px">+ Espèces</button><button class="secondary" data-action="income" style="padding:10px 5px;font-size:13px">+ Revenu</button></div>
- <div style="display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:7px"><input id="expenseSearchInput" value="${esc(expenseFilters.search)}" placeholder="Rechercher titre ou informations" autocomplete="off" style="min-width:0;padding:10px;border:1px solid #dde5e2;border-radius:11px;font-size:15px;background:#fff"><button class="ghost" id="expenseFiltersBtn" style="padding:9px 10px;font-size:13px">Filtres${n?` (${n})`:''}</button></div>
+ <div style="display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:7px"><input id="expenseSearchInput" value="${esc(expenseFilters.search)}" placeholder="Rechercher titre ou informations" autocomplete="off" style="min-width:0;padding:10px;border:1px solid #dde5e2;border-radius:11px;font-size:16px;background:#fff"><button class="ghost" id="expenseFiltersBtn" style="padding:9px 10px;font-size:13px">Filtres${n?` (${n})`:''}</button></div>
  </div>`}
-function expensesView(){const es=filteredExpenses();return`${expenseToolbar()}<section class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 style="margin-right:auto">Toutes les dépenses</h3>${activeExpenseFilterCount()?'<button class="ghost small" id="resetExpenseFilters">Réinitialiser</button>':''}</div>${es.map(e=>`${expenseDisplayRow(e,{showPayment:true})}<div class="btnrow" style="justify-content:flex-end"><button class="secondary small" data-edit-exp="${e.id}">Modifier</button><button class="danger small" data-delete-exp="${e.id}">Supprimer</button></div>`).join('')||'<div class="empty">Aucune dépense ne correspond aux filtres.</div>'}</section>`}
-function filterChecks(name,items,selected,labelFn=x=>x.label||x.value){return items.map(x=>`<label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #dde5e2;border-radius:11px;background:#fff"><input type="checkbox" name="${name}" value="${esc(x.value)}" ${(selected||[]).includes(x.value)?'checked':''} style="width:20px;height:20px"><span>${esc(labelFn(x))}</span></label>`).join('')}
+function expenseResultsHtml(){const es=filteredExpenses();return`${es.map(e=>`${expenseDisplayRow(e,{showPayment:true})}<div class="btnrow" style="justify-content:flex-end"><button class="secondary small" data-edit-exp="${e.id}">Modifier</button><button class="danger small" data-delete-exp="${e.id}">Supprimer</button></div>`).join('')||'<div class="empty">Aucune dépense ne correspond aux filtres.</div>'}`}
+function expensesView(){return`${expenseToolbar()}<section class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 style="margin-right:auto">Toutes les dépenses</h3>${activeExpenseFilterCount()?'<button class="ghost small" id="resetExpenseFilters">Réinitialiser</button>':''}</div><div id="expenseResults">${expenseResultsHtml()}</div></section>`}
+function refreshExpenseResults(){const box=document.getElementById('expenseResults');if(!box)return;box.innerHTML=expenseResultsHtml();bindExpenseResultActions()}
+function bindExpenseResultActions(){document.querySelectorAll('[data-edit-exp]').forEach(x=>x.onclick=e=>{e.stopPropagation();openExpense('',x.dataset.editExp)});document.querySelectorAll('[data-delete-exp]').forEach(x=>x.onclick=e=>{e.stopPropagation();if(confirm('Supprimer cette dépense ?')){group().expenses=group().expenses.filter(y=>y.id!==x.dataset.deleteExp);save()}})}
+function filterChecks(name,items,selected,labelFn=x=>x.label||x.value){return items.map(x=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 11px;border:1px solid #dde5e2;border-radius:11px;background:#fff"><input type="checkbox" name="${name}" value="${esc(x.value)}" ${(selected||[]).includes(x.value)?'checked':''} style="width:20px;height:20px;flex:0 0 auto"><span>${esc(labelFn(x))}</span></label>`).join('')}
+function filterSummary(values,items,emptyLabel){if(!(values||[]).length)return emptyLabel;const labels=items.filter(x=>values.includes(x.value)).map(x=>x.label);return labels.length<=2?labels.join(', '):`${labels.length} sélectionnés`}
 function openExpenseFilters(){
  const g=group();
  const dates=[...new Set(g.expenses.map(e=>e.date).filter(Boolean))].sort((a,b)=>b.localeCompare(a)).map(v=>({value:v,label:fmtDate(v)}));
@@ -140,14 +161,20 @@ function openExpenseFilters(){
  const payers=g.participants.map(p=>({value:p.id,label:p.name}));
  const methods=PAYMENT_METHODS.map(v=>({value:v,label:v}));
  modal(`<h2>Filtrer les dépenses</h2>
- <div class="field"><label>Dates</label><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:180px;overflow:auto">${filterChecks('dates',dates,expenseFilters.dates)}</div></div>
- <div class="field"><label>Catégories</label><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">${filterChecks('categories',cats,expenseFilters.categories)}</div></div>
- <div class="field"><label>Payeurs</label><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">${filterChecks('payerIds',payers,expenseFilters.payerIds)}</div></div>
- <div class="field"><label>Modes de paiement</label><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">${filterChecks('paymentMethods',methods,expenseFilters.paymentMethods)}</div></div>
+ <div class="field"><label>Date</label><button type="button" class="filter-picker-btn" data-filter-toggle="dates"><span id="summary_dates">${esc(filterSummary(expenseFilters.dates,dates,'Toutes les dates'))}</span><span>⌄</span></button><div id="panel_dates" class="filter-options-panel hidden">${filterChecks('dates',dates,expenseFilters.dates)}</div></div>
+ <div class="field"><label>Catégorie</label><button type="button" class="filter-picker-btn" data-filter-toggle="categories"><span id="summary_categories">${esc(filterSummary(expenseFilters.categories,cats,'Toutes les catégories'))}</span><span>⌄</span></button><div id="panel_categories" class="filter-options-panel hidden">${filterChecks('categories',cats,expenseFilters.categories)}</div></div>
+ <div class="field"><label>Payeur</label><button type="button" class="filter-picker-btn" data-filter-toggle="payerIds"><span id="summary_payerIds">${esc(filterSummary(expenseFilters.payerIds,payers,'Tous les payeurs'))}</span><span>⌄</span></button><div id="panel_payerIds" class="filter-options-panel hidden">${filterChecks('payerIds',payers,expenseFilters.payerIds)}</div></div>
+ <div class="field"><label>Mode de paiement</label><button type="button" class="filter-picker-btn" data-filter-toggle="paymentMethods"><span id="summary_paymentMethods">${esc(filterSummary(expenseFilters.paymentMethods,methods,'Tous les modes'))}</span><span>⌄</span></button><div id="panel_paymentMethods" class="filter-options-panel hidden">${filterChecks('paymentMethods',methods,expenseFilters.paymentMethods)}</div></div>
  <div class="modal-actions"><button type="button" class="ghost" id="cancelModal">Annuler</button><button type="button" class="secondary" id="clearExpenseFilterModal">Effacer</button><button class="primary" type="submit">Appliquer</button></div>`,(fd,d)=>{
    expenseFilters.dates=fd.getAll('dates').map(String);expenseFilters.categories=fd.getAll('categories').map(String);expenseFilters.payerIds=fd.getAll('payerIds').map(String);expenseFilters.paymentMethods=fd.getAll('paymentMethods').map(String);d.close();render()
  });
- setTimeout(()=>{document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();document.getElementById('clearExpenseFilterModal').onclick=()=>{expenseFilters={dates:[],categories:[],payerIds:[],paymentMethods:[],search:''};document.getElementById('modal').close();render()}},0)
+ setTimeout(()=>{
+   document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();
+   document.getElementById('clearExpenseFilterModal').onclick=()=>{expenseFilters={dates:[],categories:[],payerIds:[],paymentMethods:[],search:expenseFilters.search||''};document.getElementById('modal').close();render()};
+   const all={dates,categories:cats,payerIds:payers,paymentMethods:methods};
+   document.querySelectorAll('[data-filter-toggle]').forEach(b=>b.onclick=()=>{const key=b.dataset.filterToggle,p=document.getElementById('panel_'+key);p.classList.toggle('hidden')});
+   Object.keys(all).forEach(key=>document.querySelectorAll(`input[name="${key}"]`).forEach(cb=>cb.onchange=()=>{const vals=[...document.querySelectorAll(`input[name="${key}"]:checked`)].map(x=>x.value);const sm=document.getElementById('summary_'+key);if(sm)sm.textContent=filterSummary(vals,all[key],key==='dates'?'Toutes les dates':key==='categories'?'Toutes les catégories':key==='payerIds'?'Tous les payeurs':'Tous les modes')}));
+ },0)
 }
 function cashView(){const ws=group().withdrawals.slice().sort((a,b)=>b.date.localeCompare(a.date));return`<div class="btnrow"><button class="primary" data-action="withdrawal">+ Nouveau retrait</button></div>${ws.map(w=>{const cur=withdrawalCurrency(w),spent=cashSpentNative(w),rem=cashRemainingNative(w),pct=Math.min(100,spent/Number(w.amount||0)*100||0),count=group().expenses.filter(e=>e.withdrawalId===w.id).length;return`<section class="card" data-open-withdrawal="${w.id}" style="cursor:pointer"><div class="row"><div><strong>${esc(w.title||'Retrait espèces')}</strong><div class="small muted">${fmtDate(w.date)} · ${esc(participantName(w.ownerId))} · ${count} dépense${count>1?'s':''}</div></div><div class="amount">${fmt(w.amount,cur)}${cur!=='EUR'?`<div class="small muted">≈ ${fmt(withdrawalAmountEur(w),'EUR')}</div>`:''}</div></div><div class="grid"><div class="stat"><span class="small muted">Dépensé</span><strong>${fmt(spent,cur)}</strong></div><div class="stat"><span class="small muted">Restant</span><strong>${fmt(rem,cur)}</strong></div></div><div class="cash-progress" style="margin:12px 0"><span style="width:${pct}%"></span></div><div class="btnrow"><button class="secondary" data-cash-expense="${w.id}">+ Dépense</button><button class="secondary" data-edit-withdrawal="${w.id}">Modifier</button><button class="danger" data-delete-w="${w.id}">Supprimer</button></div></section>`}).join('')||'<section class="card empty">Aucun retrait espèces</section>'}`}
 function summaryExpenseLine(e,amountNative=null){const cur=e.currency||'EUR',native=amountNative===null?Number(e.amount||0):Number(amountNative||0),eur=native*Number(e.rate||1);return`<div class="row" style="align-items:flex-start"><div style="min-width:0"><strong>${esc(e.title)}</strong><div class="small muted">${esc(fmtDate(e.date||''))} · ${esc(e.category)}</div>${e.info?`<div class="small muted" style="margin-top:3px">${esc(e.info)}</div>`:''}</div><div class="amount" style="text-align:right">${fmt(native,cur)}${cur!=='EUR'?`<div class="small muted">≈ ${fmt(eur,'EUR')}</div>`:''}</div></div>`}
@@ -189,10 +216,9 @@ function bindDynamic(){
  document.querySelectorAll('[data-edit-cat]').forEach(x=>x.onclick=()=>openCategory(x.dataset.editCat));
  document.querySelectorAll('[data-action="participant"]').forEach(x=>x.onclick=openParticipant);document.querySelectorAll('[data-edit-p]').forEach(x=>x.onclick=()=>openEditParticipant(x.dataset.editP));
  document.querySelectorAll('[data-cash-expense]').forEach(x=>x.onclick=e=>{e.stopPropagation();openExpense(x.dataset.cashExpense)});
- document.querySelectorAll('[data-edit-exp]').forEach(x=>x.onclick=e=>{e.stopPropagation();openExpense('',x.dataset.editExp)});
+ bindExpenseResultActions();
  document.querySelectorAll('[data-edit-withdrawal]').forEach(x=>x.onclick=e=>{e.stopPropagation();openWithdrawal(x.dataset.editWithdrawal)});
  document.querySelectorAll('[data-open-withdrawal]').forEach(x=>x.onclick=()=>openWithdrawalDetails(x.dataset.openWithdrawal));
- document.querySelectorAll('[data-delete-exp]').forEach(x=>x.onclick=e=>{e.stopPropagation();if(confirm('Supprimer cette dépense ?')){group().expenses=group().expenses.filter(y=>y.id!==x.dataset.deleteExp);save()}});
  document.querySelectorAll('[data-delete-w]').forEach(x=>x.onclick=e=>{e.stopPropagation();if(group().expenses.some(y=>y.withdrawalId===x.dataset.deleteW))return alert('Ce retrait contient des dépenses. Supprimez ou détachez-les d’abord.');if(confirm('Supprimer ce retrait ?')){group().withdrawals=group().withdrawals.filter(w=>w.id!==x.dataset.deleteW);save()}});
  document.querySelectorAll('[data-delete-cat]').forEach(x=>x.onclick=()=>{const id=x.dataset.deleteCat,c=categories().find(y=>y.id===id);if(c&&group().expenses.some(e=>e.category===c.name))return alert('Cette catégorie est utilisée dans des dépenses.');group().categories=categories().filter(y=>y.id!==id);save()});
  document.querySelectorAll('[data-delete-p]').forEach(x=>x.onclick=()=>{const id=x.dataset.deleteP;if(group().expenses.some(e=>e.payerId===id||e.splitsEur?.[id]||e.splits?.[id])||group().withdrawals.some(w=>w.ownerId===id)||(group().settlements||[]).some(r=>r.fromId===id||r.toId===id))return alert('Ce participant est utilisé dans des opérations.');group().participants=group().participants.filter(p=>p.id!==id);save()});
@@ -200,7 +226,7 @@ function bindDynamic(){
  const ex=document.getElementById('exportBtn');if(ex)ex.onclick=exportData;
  const im=document.getElementById('importFile');if(im)im.onchange=importData;
  document.querySelectorAll('[data-summary]').forEach(x=>x.onclick=()=>{balanceSummary=x.dataset.summary;render()});const bps=document.getElementById('balanceParticipantSelect');if(bps)bps.onchange=e=>{balanceParticipantId=e.target.value;render()};
- const esi=document.getElementById('expenseSearchInput');if(esi){let t;esi.oninput=()=>{clearTimeout(t);const value=String(esi.value||'');t=setTimeout(()=>{expenseFilters.search=value.trim();render()},120)}};
+ const esi=document.getElementById('expenseSearchInput');if(esi){let t;esi.oninput=()=>{clearTimeout(t);const value=String(esi.value||'');expenseFilters.search=value.trim();t=setTimeout(()=>refreshExpenseResults(),80)}};
  const efb=document.getElementById('expenseFiltersBtn');if(efb)efb.onclick=()=>openExpenseFilters();
  const erf=document.getElementById('resetExpenseFilters');if(erf)erf.onclick=()=>{expenseFilters={dates:[],categories:[],payerIds:[],paymentMethods:[],search:''};render()};
  const ccb=document.getElementById('createCloudBtn');if(ccb)ccb.onclick=()=>createCloudShare();
@@ -208,9 +234,10 @@ function bindDynamic(){
  const snb=document.getElementById('syncNowBtn');if(snb)snb.onclick=()=>syncNow();
  const dcb=document.getElementById('disableCloudBtn');if(dcb)dcb.onclick=()=>disableCloud();
 }
-function modal(html,onSubmit){const d=document.getElementById('modal'),f=document.getElementById('modalForm');f.innerHTML=html;f.onsubmit=e=>{e.preventDefault();onSubmit(new FormData(f),d)};d.showModal()}
-function closeOnlyModal(html){const d=document.getElementById('modal'),f=document.getElementById('modalForm');f.innerHTML=html;f.onsubmit=e=>e.preventDefault();d.showModal()}
-function splitFields(values={}){return group().participants.map(p=>`<div class="split-grid"><span>${esc(p.name)}</span><input name="split_${p.id}" type="number" step="0.01" min="0" value="${Number(values[p.id]||0)}"></div>`).join('')}
+function prepareModalPosition(d,f){d.style.width='calc(100vw - 12px)';d.style.maxWidth='760px';d.style.margin='auto';f.style.width='100%';f.style.maxWidth='100%';requestAnimationFrame(()=>{f.scrollTop=0;d.scrollTop=0})}
+function modal(html,onSubmit){ensureRuntimeStyles();const d=document.getElementById('modal'),f=document.getElementById('modalForm');f.innerHTML=html;f.onsubmit=e=>{e.preventDefault();onSubmit(new FormData(f),d)};prepareModalPosition(d,f);d.showModal();requestAnimationFrame(()=>{f.scrollTop=0;d.scrollTop=0})}
+function closeOnlyModal(html){ensureRuntimeStyles();const d=document.getElementById('modal'),f=document.getElementById('modalForm');f.innerHTML=html;f.onsubmit=e=>e.preventDefault();prepareModalPosition(d,f);d.showModal();requestAnimationFrame(()=>{f.scrollTop=0;d.scrollTop=0})}
+function splitFields(values={}){return group().participants.map(p=>`<div class="split-grid"><span>${esc(p.name)}</span><input name="split_${p.id}" inputmode="decimal" type="number" step="0.01" min="0" value="${Number(values[p.id]||0)}" style="font-size:16px;width:100%;min-width:0"></div>`).join('')}
 function currencyOptions(selected){return CURRENCIES.map(c=>`<option value="${c}" ${c===selected?'selected':''}>${c}</option>`).join('')}
 function participantOptions(selected){return group().participants.map(p=>`<option value="${p.id}" ${p.id===selected?'selected':''}>${esc(p.name)}</option>`).join('')}
 function paymentOptions(selected){return PAYMENT_METHODS.map(m=>`<option value="${m}" ${m===selected?'selected':''}>${m}</option>`).join('')}
@@ -230,9 +257,9 @@ function openExpense(withdrawalId='',expenseId=''){
  const defaultPayment=existing?.paymentMethod||(w?'Espèces':'CB');
  modal(`<div style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="submit">${existing?'Enregistrer':'Ajouter'}</button></div>
  <h2 style="margin-top:6px">${existing?'Modifier la dépense':w?'Dépense du retrait':'Nouvelle dépense'}</h2>
- <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-  <div class="field"><label>Date</label><input name="date" type="date" value="${existing?.date||today()}" required></div>
-  <div class="field"><label>Payé par</label><select name="payerId">${participantOptions(defaultPayer)}</select></div>
+ <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end;width:100%">
+  <div class="field" style="min-width:0;margin:12px 0"><label>Date</label><input name="date" type="date" value="${existing?.date||today()}" required style="width:100%;min-width:0;max-width:100%"></div>
+  <div class="field" style="min-width:0;margin:12px 0"><label>Payé par</label><select name="payerId" style="width:100%;min-width:0;max-width:100%">${participantOptions(defaultPayer)}</select></div>
  </div>
  <div class="field"><label>Libellé</label><input name="title" required value="${esc(existing?.title||'')}" placeholder="Ex. Restaurant"></div>
  <div class="field"><label>Informations</label><textarea name="info" placeholder="Ex. adresse, détail, commentaire...">${esc(existing?.info||'')}</textarea></div>
@@ -248,14 +275,14 @@ function openExpense(withdrawalId='',expenseId=''){
  <div class="field"><label>Catégorie</label><select name="category">${categories().map(c=>`<option ${c.name===existing?.category?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Répartition (${selectedCurrency})</label><select name="mode" id="splitMode"><option value="equal" ${!hasCustom?'selected':''}>À parts égales</option><option value="custom" ${hasCustom?'selected':''}>Montants personnalisés (${selectedCurrency})</option></select></div>
  <div id="customSplit" class="${hasCustom?'':'hidden'}">${splitFields(existingSplits)}</div>
- <div class="field"><label>Ticket</label><div style="display:flex;align-items:center;gap:12px"><button type="button" id="takePhotoBtn" class="secondary" aria-label="Prendre le ticket en photo" style="width:54px;height:48px;padding:0;font-size:24px">📷</button><span class="small muted">Touchez l’appareil photo pour prendre ou choisir le ticket.</span></div><input id="expensePhotoInput" name="photo" type="file" accept="image/*" capture="environment" hidden></div>
+ <div class="field"><label>Ticket</label><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" id="takePhotoBtn" class="secondary" aria-label="Prendre le ticket en photo" style="width:54px;height:48px;padding:0;font-size:24px">📷</button><button type="button" id="removePhotoBtn" class="danger" ${existing?.photo?'':'style="display:none"'}>Supprimer la photo</button><span class="small muted">Touchez l’appareil photo pour prendre ou choisir le ticket.</span></div><input id="expensePhotoInput" name="photo" type="file" accept="image/*" capture="environment" hidden><input type="hidden" name="removePhoto" id="removePhotoFlag" value="0"></div>
  <div id="expensePhotoPreviewWrap" style="${existing?.photo?'':'display:none;'}margin-top:8px"><img id="expensePhotoPreview" src="${existing?.photo||''}" alt="Aperçu du ticket" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:14px;border:1px solid #dde5e2;background:#f8fbfa"></div>`,async(fd,d)=>{
    const amount=Number(fd.get('amount')),currency=String(fd.get('currency')||selectedCurrency),rate=Number(fd.get('rate')),amountEur=amount*rate;
    if(max!==null&&amount>max+.001)return alert('Cette dépense dépasse le cash restant du retrait.');
    let splits={};
    if(fd.get('mode')==='equal'){const each=amount/g.participants.length;g.participants.forEach((p,i)=>splits[p.id]=i===g.participants.length-1?amount-each*(g.participants.length-1):each)}
    else{let total=0;g.participants.forEach(p=>{const v=Number(fd.get('split_'+p.id)||0);splits[p.id]=v;total+=v});if(Math.abs(total-amount)>.01)return alert(`La somme des répartitions doit être égale au montant de la dépense (${fmt(amount,currency)}).`)}
-   let photo=existing?.photo||'';const file=fd.get('photo');if(file&&file.size)photo=await compressImage(file);
+   let photo=fd.get('removePhoto')==='1'?'':(existing?.photo||'');const file=fd.get('photo');if(file&&file.size)photo=await compressImage(file);
    g.lastRates[currency]=rate;
    const data={id:existing?.id||uid(),title:fd.get('title'),info:String(fd.get('info')||''),amount,currency,rate,amountEur,date:fd.get('date'),category:fd.get('category'),payerId:fd.get('payerId'),paymentMethod:fd.get('paymentMethod')||'CB',splits,withdrawalId:linkedWithdrawalId||null,photo};
    if(existing)Object.assign(existing,data);else g.expenses.push(data);
@@ -266,7 +293,7 @@ function openExpense(withdrawalId='',expenseId=''){
    const updateEuro=()=>{const a=Number(amount?.value||0),r=Number(rate?.value||0);if(result)result.textContent=fmt(a*r,'EUR')};
    if(cur)cur.onchange=()=>{rate.value=g.lastRates[cur.value]||(cur.value==='MAD'?MAD_RATE:1);updateEuro()};if(rate)rate.oninput=updateEuro;if(amount)amount.oninput=updateEuro;
    document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();document.getElementById('splitMode').onchange=e=>document.getElementById('customSplit').classList.toggle('hidden',e.target.value!=='custom');
-   const pi=document.getElementById('expensePhotoInput'),pb=document.getElementById('takePhotoBtn'),pr=document.getElementById('expensePhotoPreview'),pw=document.getElementById('expensePhotoPreviewWrap');if(pb&&pi)pb.onclick=()=>pi.click();if(pi)pi.onchange=()=>{const f=pi.files?.[0];if(!f)return;const u=URL.createObjectURL(f);pr.src=u;pw.style.display='block'};
+   const pi=document.getElementById('expensePhotoInput'),pb=document.getElementById('takePhotoBtn'),rb=document.getElementById('removePhotoBtn'),rf=document.getElementById('removePhotoFlag'),pr=document.getElementById('expensePhotoPreview'),pw=document.getElementById('expensePhotoPreviewWrap');if(pb&&pi)pb.onclick=()=>pi.click();if(pi)pi.onchange=()=>{const f=pi.files?.[0];if(!f)return;const u=URL.createObjectURL(f);pr.src=u;pw.style.display='block';if(rf)rf.value='0';if(rb)rb.style.display='inline-block'};if(rb)rb.onclick=()=>{if(pi)pi.value='';if(pr)pr.src='';if(pw)pw.style.display='none';if(rf)rf.value='1';rb.style.display='none'};
  },0)
 }
 
