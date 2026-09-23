@@ -1,0 +1,13 @@
+MES DEPENSES - PARTAGE MULTI-APPAREILS
+
+1. Creer un projet gratuit sur Supabase.
+2. Dans SQL Editor, executer le fichier supabase-setup.sql.
+3. Recuperer Project URL et la cle anon publique dans Project Settings > API.
+4. Dans Mes Depenses > Reglages > Partage multi-appareils, saisir les deux valeurs.
+5. Appuyer sur Activer le partage.
+6. Appuyer sur Copier le lien d'invitation et envoyer ce lien au participant.
+7. Sur Android, le participant ouvre le lien dans Chrome. Le groupe est importe puis synchronise automatiquement.
+8. Il peut ensuite installer la PWA avec Chrome > Installer l'application / Ajouter a l'ecran d'accueil.
+
+La synchronisation conserve aussi une copie locale pour fonctionner temporairement hors connexion.
+Le lien d'invitation contient le secret de chiffrement du groupe : ne l'envoyez qu'aux personnes concernees.
