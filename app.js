@@ -1,5 +1,5 @@
 const STORAGE_KEY='mes-depenses-pwa-v1';
-const APP_VERSION='v20';
+const APP_VERSION='v22';
 const DEFAULT_CATEGORIES=['Restaurant','Courses','Transport','Logement','Loisirs','Shopping','Santé','Autre'];
 const CATEGORY_ICONS={Restaurant:'utensils',Courses:'shopping-cart',Transport:'car',Logement:'house',Loisirs:'party-popper',Shopping:'shopping-bag','Santé':'heart-pulse',Autre:'circle-ellipsis'};
 const CURRENCIES=['EUR','MAD','USD','GBP','CHF','CAD'];
