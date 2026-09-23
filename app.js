@@ -251,11 +251,11 @@ function openExpense(withdrawalId='',expenseId=''){
  const defaultPayer=existing?.payerId||(w?.ownerId||g.participants[0]?.id||'');
  const defaultRate=Number(existing?.rate??g.lastRates[selectedCurrency]??(selectedCurrency==='MAD'?MAD_RATE:(w?withdrawalRate(w):1)));
  const existingAmount=Number(existing?.amount||0);
- const max=w?cashRemainingNative(w,existing?.id||'')+existingAmount:null;
+ const max=w?cashRemainingNative(w,existing?.id||''):null;
  const existingSplits=existing?expenseSplitsNative(existing):{};
  const hasCustom=existing&&Object.values(existingSplits).length>0;
  const defaultPayment=existing?.paymentMethod||(w?'Espèces':'CB');
- modal(`<div style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="submit">${existing?'Enregistrer':'Ajouter'}</button></div>
+ modal(`<div style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="button" id="saveExpenseBtn">${existing?'Enregistrer':'Ajouter'}</button></div>
  <h2 style="margin-top:6px">${existing?'Modifier la dépense':w?'Dépense du retrait':'Nouvelle dépense'}</h2>
  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end;width:100%">
   <div class="field" style="min-width:0;margin:12px 0"><label>Date</label><input name="date" type="date" value="${existing?.date||today()}" required style="width:100%;min-width:0;max-width:100%"></div>
@@ -276,7 +276,7 @@ function openExpense(withdrawalId='',expenseId=''){
  <div class="field"><label>Répartition (${selectedCurrency})</label><select name="mode" id="splitMode"><option value="equal" ${!hasCustom?'selected':''}>À parts égales</option><option value="custom" ${hasCustom?'selected':''}>Montants personnalisés (${selectedCurrency})</option></select></div>
  <div id="customSplit" class="${hasCustom?'':'hidden'}">${splitFields(existingSplits)}</div>
  <div class="field"><label>Ticket</label><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" id="takePhotoBtn" class="secondary" aria-label="Prendre le ticket en photo" style="width:54px;height:48px;padding:0;font-size:24px">📷</button><button type="button" id="removePhotoBtn" class="danger" ${existing?.photo?'':'style="display:none"'}>Supprimer la photo</button><span class="small muted">Touchez l’appareil photo pour prendre ou choisir le ticket.</span></div><input id="expensePhotoInput" name="photo" type="file" accept="image/*" capture="environment" hidden><input type="hidden" name="removePhoto" id="removePhotoFlag" value="0"></div>
- <div id="expensePhotoPreviewWrap" style="${existing?.photo?'':'display:none;'}margin-top:8px"><img id="expensePhotoPreview" src="${existing?.photo||''}" alt="Aperçu du ticket" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:14px;border:1px solid #dde5e2;background:#f8fbfa"></div>`,async(fd,d)=>{
+ <div id="expensePhotoPreviewWrap" style="${existing?.photo?'':'display:none;'}margin-top:8px"><img id="expensePhotoPreview" src="${existing?.photo||''}" alt="Aperçu du ticket" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:14px;border:1px solid #dde5e2;background:#f8fbfa"></div><button type="submit" id="expenseHiddenSubmit" style="display:none" tabindex="-1">Valider</button>`,async(fd,d)=>{
    const amount=Number(fd.get('amount')),currency=String(fd.get('currency')||selectedCurrency),rate=Number(fd.get('rate')),amountEur=amount*rate;
    if(max!==null&&amount>max+.001)return alert('Cette dépense dépasse le cash restant du retrait.');
    let splits={};
@@ -292,7 +292,7 @@ function openExpense(withdrawalId='',expenseId=''){
    const cur=document.getElementById('expenseCurrency'),rate=document.getElementById('expenseRate'),amount=document.getElementById('expenseAmount'),result=document.getElementById('expenseEuroResult');
    const updateEuro=()=>{const a=Number(amount?.value||0),r=Number(rate?.value||0);if(result)result.textContent=fmt(a*r,'EUR')};
    if(cur)cur.onchange=()=>{rate.value=g.lastRates[cur.value]||(cur.value==='MAD'?MAD_RATE:1);updateEuro()};if(rate)rate.oninput=updateEuro;if(amount)amount.oninput=updateEuro;
-   document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();document.getElementById('splitMode').onchange=e=>document.getElementById('customSplit').classList.toggle('hidden',e.target.value!=='custom');
+   document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();const saveBtn=document.getElementById('saveExpenseBtn'),form=document.getElementById('modalForm');if(saveBtn&&form)saveBtn.onclick=()=>{const title=form.querySelector('[name=title]')?.value?.trim();const amt=Number(form.querySelector('[name=amount]')?.value||0);const rt=Number(form.querySelector('[name=rate]')?.value||0);if(!title)return alert('Saisissez un libellé.');if(!(amt>0))return alert('Saisissez un montant supérieur à 0.');if(!(rt>0))return alert('Saisissez un taux de conversion valide.');form.requestSubmit(document.getElementById('expenseHiddenSubmit'));};document.getElementById('splitMode').onchange=e=>document.getElementById('customSplit').classList.toggle('hidden',e.target.value!=='custom');
    const pi=document.getElementById('expensePhotoInput'),pb=document.getElementById('takePhotoBtn'),rb=document.getElementById('removePhotoBtn'),rf=document.getElementById('removePhotoFlag'),pr=document.getElementById('expensePhotoPreview'),pw=document.getElementById('expensePhotoPreviewWrap');if(pb&&pi)pb.onclick=()=>pi.click();if(pi)pi.onchange=()=>{const f=pi.files?.[0];if(!f)return;const u=URL.createObjectURL(f);pr.src=u;pw.style.display='block';if(rf)rf.value='0';if(rb)rb.style.display='inline-block'};if(rb)rb.onclick=()=>{if(pi)pi.value='';if(pr)pr.src='';if(pw)pw.style.display='none';if(rf)rf.value='1';rb.style.display='none'};
  },0)
 }
