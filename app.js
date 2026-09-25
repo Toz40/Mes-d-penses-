@@ -1,5 +1,5 @@
 const STORAGE_KEY='mes-depenses-pwa-v1';
-const APP_VERSION='v26';
+const APP_VERSION='v27';
 const DEFAULT_CATEGORIES=['Restaurant','Courses','Transport','Logement','Loisirs','Shopping','Santé','Autre'];
 const CATEGORY_ICONS={Restaurant:'utensils',Courses:'shopping-cart',Transport:'car',Logement:'house',Loisirs:'party-popper',Shopping:'shopping-bag','Santé':'heart-pulse',Autre:'circle-ellipsis'};
 const CURRENCIES=['EUR','MAD','USD','GBP','CHF','CAD'];
@@ -123,6 +123,22 @@ function ensureRuntimeStyles(){
  .report-group-row td{padding:9px 7px;background:#fff7f7;color:#d51f2b;font-weight:900;border-bottom:1px solid #f0c8cb}
  .report-group-line{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
  .report-export-sticky{position:sticky;top:0;z-index:12;background:#fff;padding:10px 0 9px;border-bottom:1px solid #dde5e2;margin-bottom:10px}
+ .expense-compact{padding-bottom:4px}
+ .expense-compact .expense-actionbar{margin:-18px -18px 6px!important;padding:7px 12px!important;gap:6px!important}
+ .expense-compact h2{font-size:25px;line-height:1.05;margin:4px 0 8px!important}
+ .expense-compact .field{margin:5px 0!important}
+ .expense-compact .field label{font-size:12px!important;margin-bottom:3px!important;line-height:1.15}
+ .expense-compact input,.expense-compact select,.expense-compact textarea{padding:8px 10px!important;min-height:40px!important;font-size:16px!important}
+ .expense-compact textarea{min-height:52px!important;height:52px!important;resize:vertical}
+ .expense-compact .expense-head-grid{gap:7px!important}
+ .expense-compact .expense-head-grid>.field{margin:5px 0!important}
+ .expense-compact .compact-three{gap:6px!important}
+ .expense-compact .compact-two{gap:7px!important}
+ .expense-compact #expenseEuroResult{padding:8px 10px!important;min-height:40px!important;font-size:16px!important;display:flex;align-items:center;justify-content:flex-end}
+ .expense-compact .split-grid{margin-bottom:4px!important;gap:6px!important}
+ .expense-compact .split-grid input{padding:7px 9px!important;min-height:38px!important}
+ .expense-compact #takePhotoBtn{width:44px!important;height:40px!important;font-size:20px!important}
+ .expense-compact .ticket-help{font-size:11px!important}
  .report-export-head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center}
  .report-export-head h2{margin:0;font-size:24px;line-height:1.1;min-width:0}
  .report-export-head button{padding:9px 10px;font-size:12px;white-space:nowrap}
@@ -323,7 +339,7 @@ function openExpense(withdrawalId='',expenseId='',duplicateFromId='',flow={}){
  const existingSplits=seed?expenseSplitsNative(seed):{};
  const hasCustom=seed&&Object.values(existingSplits).length>0;
  const defaultPayment=seed?.paymentMethod||(w?'Espèces':'CB');
- modal(`<div style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="button" id="saveExpenseBtn">${existing||isDuplicate?'Enregistrer':'Ajouter'}</button></div>
+ modal(`<div class="expense-compact"><div class="expense-actionbar" style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="button" id="saveExpenseBtn">${existing||isDuplicate?'Enregistrer':'Ajouter'}</button></div>
  <h2 style="margin-top:6px">${existing?'Modifier la dépense':isDuplicate?'Dupliquer la dépense':w?'Dépense du retrait':'Nouvelle dépense'}</h2>
  <div class="expense-head-grid">
   <div class="field"><label>Date</label><input name="date" type="date" value="${seed?.date||today()}" required></div>
@@ -331,20 +347,20 @@ function openExpense(withdrawalId='',expenseId='',duplicateFromId='',flow={}){
  </div>
  <div class="field"><label>Libellé</label><input name="title" required value="${esc(seed?.title||'')}" placeholder="Ex. Restaurant"></div>
  <div class="field"><label>Informations</label><textarea name="info" placeholder="Ex. adresse, détail, commentaire...">${esc(seed?.info||'')}</textarea></div>
- <div style="display:grid;grid-template-columns:1.1fr .9fr .8fr;gap:8px;align-items:end">
+ <div class="compact-three" style="display:grid;grid-template-columns:1.1fr .9fr .8fr;gap:8px;align-items:end">
   <div class="field"><label>Mode de paiement</label><select name="paymentMethod">${paymentOptions(defaultPayment)}</select></div>
   <div class="field"><label>Montant${max!==null?` (max ${fmt(max,selectedCurrency)})`:''}</label><input name="amount" id="expenseAmount" type="number" step="0.01" min="0.01" ${max!==null?`max="${max}"`:''} value="${existingAmount||''}" required></div>
   <div class="field"><label>Devise</label>${forcedCurrency?`<input value="${forcedCurrency}" disabled><input type="hidden" name="currency" value="${forcedCurrency}">`:`<select name="currency" id="expenseCurrency">${currencyOptions(selectedCurrency)}</select>`}</div>
  </div>
- <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
+ <div class="compact-two" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
   <div class="field"><label>Taux vers EUR</label><input name="rate" id="expenseRate" type="number" step="0.000001" min="0.000001" value="${defaultRate}" required></div>
   <div class="field"><label>Résultat en euros</label><div id="expenseEuroResult" style="padding:12px;border:1px solid #dde5e2;border-radius:12px;background:#f8fbfa;font-size:18px;font-weight:800;text-align:right">${fmt(existingAmount*defaultRate,'EUR')}</div></div>
  </div>
  <div class="field"><label>Catégorie</label><select name="category">${categories().map(c=>`<option ${c.name===seed?.category?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Répartition (${selectedCurrency})</label><select name="mode" id="splitMode"><option value="equal" ${!hasCustom?'selected':''}>À parts égales</option><option value="custom" ${hasCustom?'selected':''}>Montants personnalisés (${selectedCurrency})</option></select></div>
  <div id="customSplit" class="${hasCustom?'':'hidden'}">${splitFields(existingSplits)}</div>
- <div class="field"><label>Ticket</label><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" id="takePhotoBtn" class="secondary" aria-label="Prendre le ticket en photo" style="width:54px;height:48px;padding:0;font-size:24px">📷</button><button type="button" id="removePhotoBtn" class="danger" ${seed?.photo?'':'style="display:none"'}>Supprimer la photo</button><span class="small muted">Touchez l’appareil photo pour prendre ou choisir le ticket.</span></div><input id="expensePhotoInput" name="photo" type="file" accept="image/*" capture="environment" hidden><input type="hidden" name="removePhoto" id="removePhotoFlag" value="0"></div>
- <div id="expensePhotoPreviewWrap" style="${seed?.photo?'':'display:none;'}margin-top:8px"><img id="expensePhotoPreview" src="${seed?.photo||''}" alt="Aperçu du ticket" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:14px;border:1px solid #dde5e2;background:#f8fbfa"></div><button type="submit" id="expenseHiddenSubmit" style="display:none" tabindex="-1">Valider</button>`,async(fd,d)=>{
+ <div class="field"><label>Ticket</label><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" id="takePhotoBtn" class="secondary" aria-label="Prendre le ticket en photo" style="width:54px;height:48px;padding:0;font-size:24px">📷</button><button type="button" id="removePhotoBtn" class="danger" ${seed?.photo?'':'style="display:none"'}>Supprimer la photo</button><span class="small muted ticket-help">Touchez l’appareil photo pour prendre ou choisir le ticket.</span></div><input id="expensePhotoInput" name="photo" type="file" accept="image/*" capture="environment" hidden><input type="hidden" name="removePhoto" id="removePhotoFlag" value="0"></div>
+ <div id="expensePhotoPreviewWrap" style="${seed?.photo?'':'display:none;'}margin-top:8px"><img id="expensePhotoPreview" src="${seed?.photo||''}" alt="Aperçu du ticket" style="display:block;width:100%;max-height:420px;object-fit:contain;border-radius:14px;border:1px solid #dde5e2;background:#f8fbfa"></div><button type="submit" id="expenseHiddenSubmit" style="display:none" tabindex="-1">Valider</button></div>`,async(fd,d)=>{
    const amount=Number(fd.get('amount')),currency=String(fd.get('currency')||selectedCurrency),rate=Number(fd.get('rate')),amountEur=amount*rate;
    if(max!==null&&amount>max+.001)return alert('Cette dépense dépasse le cash restant du retrait.');
    let splits={};
