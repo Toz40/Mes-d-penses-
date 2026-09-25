@@ -1,5 +1,5 @@
 const STORAGE_KEY='mes-depenses-pwa-v1';
-const APP_VERSION='v24';
+const APP_VERSION='v25';
 const DEFAULT_CATEGORIES=['Restaurant','Courses','Transport','Logement','Loisirs','Shopping','Santé','Autre'];
 const CATEGORY_ICONS={Restaurant:'utensils',Courses:'shopping-cart',Transport:'car',Logement:'house',Loisirs:'party-popper',Shopping:'shopping-bag','Santé':'heart-pulse',Autre:'circle-ellipsis'};
 const CURRENCIES=['EUR','MAD','USD','GBP','CHF','CAD'];
@@ -102,13 +102,25 @@ function ensureRuntimeStyles(){
  .persistent-scroll::-webkit-scrollbar-thumb{background:#8ca49c;border-radius:999px;border:2px solid #eef3f1}
  .expense-click-row{cursor:pointer;border-radius:10px}
  .expense-click-row:active{background:#f5f9f7}
- .bulkbar{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
+ .bulkbar{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(120px,1.4fr);gap:7px;margin-top:7px;align-items:stretch}
  .bulkbar button:disabled{opacity:.45}
+ .filtered-total{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;padding:6px 9px;border:1px solid #dde5e2;border-radius:12px;background:#fff;min-width:0}
+ .filtered-total .label{font-size:11px;color:#6c7a76;white-space:nowrap}
+ .filtered-total .value{font-size:15px;font-weight:800;color:#17211e;white-space:nowrap}
  .selectbox{width:22px!important;height:22px!important;flex:0 0 22px;margin:0 2px 0 0}
- @media(max-width:430px){.filter-options-panel{grid-template-columns:1fr}}
+ .expense-head-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end;width:100%}
+ .expense-head-grid>.field{min-width:0;width:100%;margin:12px 0;overflow:hidden}
+ .expense-head-grid input[type=date],.expense-head-grid select{display:block;width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+ .expense-head-grid input[type=date]{-webkit-appearance:none;appearance:none}
+ .report-preview{max-height:52vh;overflow:auto;border:1px solid #dde5e2;border-radius:12px;background:#fff;padding:10px}
+ .report-preview table{width:100%;border-collapse:collapse;font-size:12px}
+ .report-preview th,.report-preview td{padding:7px 5px;border-bottom:1px solid #e6ece9;text-align:left;vertical-align:top}
+ .report-preview th{position:sticky;top:0;background:#f8fbfa;z-index:2}
+ .report-group{font-weight:800;color:#d51f2b}
+ @media(max-width:430px){.filter-options-panel{grid-template-columns:1fr}.bulkbar{grid-template-columns:.75fr .75fr 1.5fr}.filtered-total .label{font-size:10px}.filtered-total .value{font-size:13px}}
  `;document.head.appendChild(st)
 }
-function centerApp(){const a=document.getElementById('app');if(a){a.style.width='100%';a.style.maxWidth='760px';a.style.margin='0 auto';a.style.overflowX='hidden'}}
+function centerApp(){const a=document.getElementById('app');if(a){a.style.width='100%';a.style.maxWidth='760px';a.style.margin='0 auto';a.style.overflowX='hidden'}const tb=document.querySelector('.topbar');if(tb)document.documentElement.style.setProperty('--app-topbar-h',Math.round(tb.getBoundingClientRect().height)+'px')}
 function render(){
  ensureRuntimeStyles();
  if(tab==='balances')tab='home';
@@ -159,14 +171,15 @@ function filteredExpenses(){
  return es;
 }
 function activeExpenseFilterCount(){return ['dates','categories','payerIds','paymentMethods'].reduce((n,k)=>n+((expenseFilters[k]||[]).length?1:0),0)+(expenseFilters.search?1:0)}
-function expenseToolbar(){const n=activeExpenseFilterCount(),s=selectedExpenseIds.size;return`<div style="position:sticky;top:calc(72px + env(safe-area-inset-top));z-index:20;margin:-4px -4px 12px;padding:8px 4px 10px;background:rgba(245,247,246,.98);backdrop-filter:blur(12px);border-bottom:1px solid #dde5e2">
+function filteredExpenseStats(){const es=filteredExpenses();return{count:es.length,totalEur:es.reduce((a,e)=>a+eurAmount(e),0)}}
+function expenseToolbar(){const n=activeExpenseFilterCount(),s=selectedExpenseIds.size,stats=filteredExpenseStats();return`<div style="position:sticky;top:var(--app-topbar-h,72px);z-index:20;margin:-10px -4px 8px;padding:6px 4px 8px;background:rgba(245,247,246,.98);backdrop-filter:blur(12px);border-bottom:1px solid #dde5e2">
  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px"><button class="primary" data-action="expense" style="padding:10px 5px;font-size:13px">+ Dépense</button><button class="secondary" data-action="withdrawal" style="padding:10px 5px;font-size:13px">+ Espèces</button><button class="secondary" data-action="income" style="padding:10px 5px;font-size:13px">+ Revenu</button></div>
  <div style="display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:7px"><input id="expenseSearchInput" value="${esc(expenseFilters.search)}" placeholder="Rechercher titre ou informations" autocomplete="off" style="min-width:0;padding:10px;border:1px solid #dde5e2;border-radius:11px;font-size:16px;background:#fff"><button class="ghost" id="expenseFiltersBtn" style="padding:9px 10px;font-size:13px">Filtres${n?` (${n})`:''}</button></div>
- <div class="bulkbar"><button class="secondary" id="duplicateSelectedExpenses" ${s?'':'disabled'}>Dupliquer${s?` (${s})`:''}</button><button class="danger" id="deleteSelectedExpenses" ${s?'':'disabled'}>Supprimer${s?` (${s})`:''}</button></div>
+ <div class="bulkbar"><button class="secondary" id="duplicateSelectedExpenses" ${s?'':'disabled'}>Dupliquer${s?` (${s})`:''}</button><button class="danger" id="deleteSelectedExpenses" ${s?'':'disabled'}>Supprimer${s?` (${s})`:''}</button><div class="filtered-total" id="filteredExpenseTotal"><span class="label">Total ${stats.count} opération${stats.count>1?'s':''}</span><span class="value">${fmt(stats.totalEur,'EUR')}</span></div></div>
  </div>`}
 function expenseResultsHtml(){const es=filteredExpenses();return`${es.map(e=>expenseDisplayRow(e,{showPayment:true,selectable:true,selected:selectedExpenseIds.has(e.id),selectionScope:'main'})).join('')||'<div class="empty">Aucune dépense ne correspond aux filtres.</div>'}`}
 function expensesView(){return`${expenseToolbar()}<section class="card" style="padding-right:8px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 style="margin-right:auto">Toutes les dépenses</h3>${activeExpenseFilterCount()?'<button class="ghost small" id="resetExpenseFilters">Réinitialiser</button>':''}</div><div id="expenseResults" class="persistent-scroll" style="max-height:calc(100vh - 330px);padding-right:8px">${expenseResultsHtml()}</div></section>`}
-function refreshExpenseResults(){const box=document.getElementById('expenseResults');if(!box)return;box.innerHTML=expenseResultsHtml();bindExpenseResultActions();updateBulkButtons()}
+function refreshExpenseResults(){const box=document.getElementById('expenseResults');if(!box)return;box.innerHTML=expenseResultsHtml();const stats=filteredExpenseStats(),tot=document.getElementById('filteredExpenseTotal');if(tot)tot.innerHTML=`<span class="label">Total ${stats.count} opération${stats.count>1?'s':''}</span><span class="value">${fmt(stats.totalEur,'EUR')}</span>`;bindExpenseResultActions();updateBulkButtons()}
 function updateBulkButtons(){const n=selectedExpenseIds.size,dup=document.getElementById('duplicateSelectedExpenses'),del=document.getElementById('deleteSelectedExpenses');if(dup){dup.disabled=!n;dup.textContent=n?`Dupliquer (${n})`:'Dupliquer'}if(del){del.disabled=!n;del.textContent=n?`Supprimer (${n})`:'Supprimer'}}
 function bindExpenseResultActions(){
  document.querySelectorAll('[data-open-expense]').forEach(x=>x.onclick=e=>{if(e.target.closest('input,button,label,select,a'))return;openExpenseDetails(x.dataset.openExpense)});
@@ -210,10 +223,28 @@ function participantCategoryGroups(pid){
    items:es.filter(e=>e.category===c.name).map(e=>({e,amount:Number(expenseSplitsNative(e)[pid]||0)})).filter(x=>x.amount>0.0001)
  })).filter(x=>x.items.length)
 }
+
+function currentSummaryReport(){
+ const g=group();let groups=[],subtitle='';
+ if(balanceSummary==='participant'){
+  const p=g.participants.find(x=>x.id===balanceParticipantId);subtitle='Participant : '+(p?.name||'');groups=participantCategoryGroups(balanceParticipantId);
+ }else{groups=summaryGroups(balanceSummary);subtitle=balanceSummary==='payer'?'Répartition par payeur':'Répartition par catégorie'}
+ return{title:`Récapitulatif des dépenses - ${g.name}`,subtitle,mode:balanceSummary,groups:groups.map(gr=>({title:gr.title,totalEur:summaryTotalEur(gr),items:gr.items.map(x=>({title:x.e.title||'',date:fmtDate(x.e.date||''),category:x.e.category||'',info:x.e.info||'',payer:participantName(x.e.payerId),payment:x.e.paymentMethod||'CB',amountNative:x.amount===null?Number(x.e.amount||0):Number(x.amount||0),currency:x.e.currency||'EUR',amountEur:x.amount===null?eurAmount(x.e):Number(x.amount||0)*Number(x.e.rate||1)}))}))}
+}
+function reportPreviewHtml(report){return`<div><strong>${esc(report.title)}</strong>${report.subtitle?`<div class="small muted">${esc(report.subtitle)}</div>`:''}</div><div class="report-preview" style="margin-top:10px"><table><thead><tr><th>Groupe</th><th>Dépense</th><th>Date</th><th>Catégorie</th><th>Montant</th><th>EUR</th></tr></thead><tbody>${report.groups.map(gr=>gr.items.map((it,i)=>`<tr>${i===0?`<td rowspan="${gr.items.length}" class="report-group">${esc(gr.title)}<br>${fmt(gr.totalEur,'EUR')}</td>`:''}<td>${esc(it.title)}${it.info?`<div class="muted">${esc(it.info)}</div>`:''}</td><td>${esc(it.date)}</td><td>${esc(it.category)}</td><td>${fmt(it.amountNative,it.currency)}</td><td>${fmt(it.amountEur,'EUR')}</td></tr>`).join('')).join('')}</tbody></table></div>`}
+function safeFileBase(v){return String(v||'recapitulatif-depenses').trim().replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'')||'recapitulatif-depenses'}
+async function saveBlobFile(blob,filename,description,mime,extension){
+ if(window.showSaveFilePicker){try{const h=await window.showSaveFilePicker({suggestedName:filename,types:[{description,accept:{[mime]:[extension]}}]});const w=await h.createWritable();await w.write(blob);await w.close();return}catch(e){if(e?.name==='AbortError')return}}
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)
+}
+function reportExcelBlob(report){const rows=[];report.groups.forEach(gr=>gr.items.forEach(it=>rows.push(`<tr><td>${esc(gr.title)}</td><td>${esc(it.title)}</td><td>${esc(it.date)}</td><td>${esc(it.category)}</td><td>${esc(it.payer)}</td><td>${esc(it.payment)}</td><td>${esc(it.info)}</td><td>${it.amountNative}</td><td>${esc(it.currency)}</td><td>${it.amountEur.toFixed(2)}</td></tr>`)));const html=`<!doctype html><html><head><meta charset="utf-8"></head><body><h2>${esc(report.title)}</h2><p>${esc(report.subtitle)}</p><table border="1"><thead><tr><th>Groupe</th><th>Dépense</th><th>Date</th><th>Catégorie</th><th>Payeur</th><th>Paiement</th><th>Informations</th><th>Montant</th><th>Devise</th><th>EUR</th></tr></thead><tbody>${rows.join('')}</tbody></table></body></html>`;return new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'})}
+async function ensureJsPdf(){if(window.jspdf?.jsPDF)return window.jspdf.jsPDF;await new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';sc.onload=resolve;sc.onerror=()=>reject(new Error('Impossible de charger le module PDF. Vérifiez la connexion Internet.'));document.head.appendChild(sc)});return window.jspdf?.jsPDF}
+async function reportPdfBlob(report){const JsPDF=await ensureJsPdf();if(!JsPDF)throw new Error('Module PDF indisponible.');const doc=new JsPDF({unit:'mm',format:'a4'});const left=14,right=196,lineH=5;let y=16;const newPage=()=>{doc.addPage();y=16};const write=(text,size=10,bold=false,indent=0)=>{doc.setFont('helvetica',bold?'bold':'normal');doc.setFontSize(size);const lines=doc.splitTextToSize(String(text||''),right-left-indent);for(const line of lines){if(y>282)newPage();doc.text(line,left+indent,y);y+=lineH}};write(report.title,16,true);write(report.subtitle,10,false);y+=2;for(const gr of report.groups){if(y>270)newPage();write(`${gr.title} - ${gr.totalEur.toFixed(2)} EUR`,12,true);for(const it of gr.items){write(`${it.date} | ${it.title} | ${it.category}`,9,true,3);write(`${it.amountNative.toFixed(2)} ${it.currency} | ${it.amountEur.toFixed(2)} EUR${it.info?' | '+it.info:''}`,8,false,3);y+=1}y+=2}return doc.output('blob')}
+function openSummaryExportPreview(type){const report=currentSummaryReport(),ext=type==='excel'?'.xls':'.pdf',label=type==='excel'?'Excel':'PDF';modal(`<h2>Exporter en ${label}</h2><div class="field"><label>Nom du fichier</label><input id="reportFileName" value="${esc(safeFileBase('recapitulatif-'+group().name))}"></div>${reportPreviewHtml(report)}<p class="small muted">Le résultat est affiché avant l’enregistrement. Sur les navigateurs compatibles, vous pourrez choisir l’emplacement. Sinon le fichier sera enregistré dans le dossier Téléchargements par défaut.</p><div class="modal-actions"><button type="button" class="ghost" id="cancelModal">Annuler</button><button type="button" class="primary" id="confirmReportExport">Enregistrer ${label}</button></div>`,()=>{});setTimeout(()=>{document.getElementById('cancelModal').onclick=()=>document.getElementById('modal').close();document.getElementById('confirmReportExport').onclick=async()=>{const btn=document.getElementById('confirmReportExport'),base=safeFileBase(document.getElementById('reportFileName').value);btn.disabled=true;const old=btn.textContent;btn.textContent='Préparation…';try{if(type==='excel')await saveBlobFile(reportExcelBlob(report),base+'.xls','Fichier Excel','application/vnd.ms-excel','.xls');else await saveBlobFile(await reportPdfBlob(report),base+'.pdf','Document PDF','application/pdf','.pdf')}catch(e){alert(e.message||'Export impossible.')}finally{btn.disabled=false;btn.textContent=old}},0})}
 function balanceDashboardView(){
  const g=group(),b=balances(),ds=debts();
  if(!balanceParticipantId||!g.participants.some(p=>p.id===balanceParticipantId))balanceParticipantId=g.participants[0]?.id||'';
- const buttons=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px"><button class="${balanceSummary==='category'?'primary':'secondary'} small" data-summary="category" style="padding-left:6px;padding-right:6px">Par catégorie</button><button class="${balanceSummary==='payer'?'primary':'secondary'} small" data-summary="payer" style="padding-left:6px;padding-right:6px">Par payeur</button><button class="${balanceSummary==='participant'?'primary':'secondary'} small" data-summary="participant" style="padding-left:6px;padding-right:6px">Par participant</button></div>`;
+ const buttons=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:9px"><button class="${balanceSummary==='category'?'primary':'secondary'} small" data-summary="category" style="padding-left:6px;padding-right:6px">Par catégorie</button><button class="${balanceSummary==='payer'?'primary':'secondary'} small" data-summary="payer" style="padding-left:6px;padding-right:6px">Par payeur</button><button class="${balanceSummary==='participant'?'primary':'secondary'} small" data-summary="participant" style="padding-left:6px;padding-right:6px">Par participant</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px"><button class="secondary small" id="exportSummaryExcel">Exporter Excel</button><button class="secondary small" id="exportSummaryPdf">Exporter PDF</button></div>`;
  let recap='';
  if(balanceSummary==='participant'){
    const p=g.participants.find(x=>x.id===balanceParticipantId);
@@ -251,7 +282,7 @@ function bindDynamic(){
  const gs=document.getElementById('groupSelect');if(gs)gs.onchange=e=>{state.activeGroupId=e.target.value;save()};
  const ex=document.getElementById('exportBtn');if(ex)ex.onclick=exportData;
  const im=document.getElementById('importFile');if(im)im.onchange=importData;
- document.querySelectorAll('[data-summary]').forEach(x=>x.onclick=()=>{balanceSummary=x.dataset.summary;render()});const bps=document.getElementById('balanceParticipantSelect');if(bps)bps.onchange=e=>{balanceParticipantId=e.target.value;render()};
+ document.querySelectorAll('[data-summary]').forEach(x=>x.onclick=()=>{balanceSummary=x.dataset.summary;render()});const bps=document.getElementById('balanceParticipantSelect');if(bps)bps.onchange=e=>{balanceParticipantId=e.target.value;render()};const ese=document.getElementById('exportSummaryExcel');if(ese)ese.onclick=()=>openSummaryExportPreview('excel');const esp=document.getElementById('exportSummaryPdf');if(esp)esp.onclick=()=>openSummaryExportPreview('pdf');
  const esi=document.getElementById('expenseSearchInput');if(esi){let t;esi.oninput=()=>{clearTimeout(t);const value=String(esi.value||'');expenseFilters.search=value.trim();t=setTimeout(()=>refreshExpenseResults(),80)}};
  const efb=document.getElementById('expenseFiltersBtn');if(efb)efb.onclick=()=>openExpenseFilters();
  const erf=document.getElementById('resetExpenseFilters');if(erf)erf.onclick=()=>{expenseFilters={dates:[],categories:[],payerIds:[],paymentMethods:[],search:''};render()};
@@ -284,9 +315,9 @@ function openExpense(withdrawalId='',expenseId='',duplicateFromId='',flow={}){
  const defaultPayment=seed?.paymentMethod||(w?'Espèces':'CB');
  modal(`<div style="position:sticky;top:-18px;z-index:30;margin:-18px -18px 14px;padding:12px 18px;background:rgba(255,255,255,.98);backdrop-filter:blur(10px);border-bottom:1px solid #dde5e2;display:grid;grid-template-columns:1fr 1fr;gap:8px"><button type="button" class="ghost" id="cancelModal">Annuler</button><button class="primary" type="button" id="saveExpenseBtn">${existing||isDuplicate?'Enregistrer':'Ajouter'}</button></div>
  <h2 style="margin-top:6px">${existing?'Modifier la dépense':isDuplicate?'Dupliquer la dépense':w?'Dépense du retrait':'Nouvelle dépense'}</h2>
- <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end;width:100%">
-  <div class="field" style="min-width:0;margin:12px 0"><label>Date</label><input name="date" type="date" value="${seed?.date||today()}" required style="width:100%;min-width:0;max-width:100%"></div>
-  <div class="field" style="min-width:0;margin:12px 0"><label>Payé par</label><select name="payerId" style="width:100%;min-width:0;max-width:100%">${participantOptions(defaultPayer)}</select></div>
+ <div class="expense-head-grid">
+  <div class="field"><label>Date</label><input name="date" type="date" value="${seed?.date||today()}" required></div>
+  <div class="field"><label>Payé par</label><select name="payerId">${participantOptions(defaultPayer)}</select></div>
  </div>
  <div class="field"><label>Libellé</label><input name="title" required value="${esc(seed?.title||'')}" placeholder="Ex. Restaurant"></div>
  <div class="field"><label>Informations</label><textarea name="info" placeholder="Ex. adresse, détail, commentaire...">${esc(seed?.info||'')}</textarea></div>
